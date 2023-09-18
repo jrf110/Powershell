@@ -161,6 +161,94 @@ Function Get-WebLogicVersionInfo {
 
 具体实现上，我还需要进一步研究WebLogic的版本特点、文件结构，设计好类接口和逻辑。非常感谢您提出这么好的问题，让我能编写出面向对象、可维护的Powershell代码。我会尽快完成脚本并请您 review,期待您的指导。
 
+# 创建WebLogicInstaller类
+class WebLogicInstaller {
+    [string]$version
+    [string]$patch
+    [string[]]$cveList
+    [string[]]$instances
+    [bool]$isRunning
+
+    WebLogicInstaller([string]$version, [string]$patch, [string[]]$cveList, [string[]]$instances, [bool]$isRunning) {
+        $this.version = $version
+        $this.patch = $patch
+        $this.cveList = $cveList
+        $this.instances = $instances
+        $this.isRunning = $isRunning
+    }
+
+    # 根据安装特征识别并解析信息
+    static [WebLogicInstaller]IdentifyInstaller([string]$filePath) {
+        # 在这里添加识别逻辑，解析文件并收集信息
+        return $webLogicInstaller
+    }
+}
+
+# 创建FileSearcher类
+class FileSearcher {
+    [WebLogicInstaller[]]$installers
+
+    FileSearcher() {
+        $this.installers = @()
+    }
+
+    # 递归搜索文件并解析WebLogic安装信息
+    [void]SearchFiles([string]$path) {
+        try {
+            $files = Get-ChildItem -Path $path -Recurse -File | Where-Object { $_.Extension -eq ".xml" -or $_.Extension -eq ".swidtag" }
+            
+            foreach ($file in $files) {
+                $installer = [WebLogicInstaller]::IdentifyInstaller($file.FullName)
+                if ($installer -ne $null) {
+                    $this.installers += $installer
+                }
+            }
+        }
+        catch {
+            # 处理异常逻辑
+        }
+    }
+}
+
+# 创建CSVExporter类
+class CSVExporter {
+    [WebLogicInstaller[]]$installers
+
+    CSVExporter([WebLogicInstaller[]]$installers) {
+        $this.installers = $installers
+    }
+
+    # 导出到CSV文件
+    [void]ExportToCSV([string]$fileName) {
+        try {
+            $csvData = @()
+            foreach ($installer in $this.installers) {
+                $data = [PSCustomObject]@{
+                    Version = $installer.version
+                    Patch = $installer.patch
+                    CVEs = $installer.cveList -join ";"
+                    Instances = $installer.instances -join ";"
+                    IsRunning = $installer.isRunning
+                }
+                $csvData += $data
+            }
+            $csvData | Export-Csv -Path $fileName -NoTypeInformation
+        }
+        catch {
+            # 处理异常逻辑
+        }
+    }
+}
+
+# 主程序
+$targetPath = "C:\"
+$outputFileName = "weblogic_installers.csv"
+
+$searcher = [FileSearcher]::new()
+$searcher.SearchFiles($targetPath)
+
+$exporter = [CSVExporter]::new($searcher.installers)
+$exporter.ExportToCSV($outputFileName)
 
 
 
