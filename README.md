@@ -253,3 +253,72 @@ $exporter.ExportToCSV($outputFileName)
 
 
 
+
+
+
+
+
+
+#!/bin/ksh 
+
+# Installer class
+class Installer {
+
+   version=""
+   path=""
+
+   identify() {
+      if [[ "$1” == *java.exe ]]; then
+         echo "Found possible Java install at $1”
+         this.getinfo "$1”
+      fi  
+   }
+
+   getinfo() {
+      this.version=`/path/to/java -version 2>&1 | head -1 | awk '{print $3}'`
+      this.path=`dirname $1`
+      echo "Got info for Java at $1: $this.version” 
+   }
+
+}
+
+# FileSearcher class
+class FileSearcher {
+
+   search() {
+      find / -type f -print | while read file; do
+         installer.identify "$file” 
+      done
+   }
+
+}  
+
+# CSVExporter class   
+class CSVExporter {
+
+   export() {
+      echo "Version,Path” > results.csv
+      for installer in ${installers[@]}; do
+         echo "$installer.version,$installer.path” >> results.csv   
+      done
+   }
+
+}
+
+# Main
+
+installers=()
+
+installer=Installer
+searcher=FileSearcher
+exporter=CSVExporter
+
+# Search
+searcher.search  
+
+# Gather installers
+installers+=("$installer") 
+
+# Export 
+exporter.export
+
