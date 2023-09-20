@@ -322,3 +322,75 @@ installers+=("$installer")
 # Export 
 exporter.export
 
+
+
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Find;
+use IPC::Open3;
+
+# 创建一个类来表示Java程序
+package JavaProgram;
+sub new {
+    my ($class, $name, $path, $version, $patch, $vendor) = @_;
+    my $self = bless {
+        name => $name,
+        path => $path,
+        version => $version,
+        patch => $patch,
+        vendor => $vendor
+    }, $class;
+    return $self;
+}
+
+# 定义一个方法来显示Java程序的信息
+sub show {
+    my $self = shift;
+    print "Name: $self->{name}\n";
+    print "Path: $self->{path}\n";
+    print "Version: $self->{version}\n";
+    print "Patch: $self->{patch}\n";
+    print "Vendor: $self->{vendor}\n";
+    print "\n";
+}
+
+# 创建一个空数组来存储Java程序的对象
+my @java_programs = ();
+
+# 定义一个函数来查找并执行Java程序
+sub find_and_exec_java {
+    my $file = $_; # 获取当前文件名
+    my $path = $File::Find::name; # 获取当前文件路径
+    # 如果文件名是java或javac，且是可执行文件
+    if ($file =~ /^(java|javac)$/ and -x $file) {
+        # 创建一个空字符串来存储输出信息
+        my $output = "";
+        # 打开一个双向管道，执行文件，并获取其输出信息
+        open3(my $in, my $out, my $err, "$file -version");
+        while (<$out>) {
+            # 拼接输出信息到字符串中
+            $output .= $_;
+        }
+        close($in);
+        close($out);
+        close($err);
+        # 如果输出信息包含Java的版本，补丁，发行商等信息
+        if ($output =~ /(\S+) version \"(\S+)_(\S+)\".*\n(\S+)/) {
+            # 提取这些信息并赋值给变量
+            my ($name, $version, $patch, $vendor) = ($1, $2, $3, $4);
+            # 创建一个Java程序的对象，并添加到数组中
+            my $java_program = JavaProgram->new($name, $path, $version, $patch, $vendor);
+            push @java_programs, $java_program;
+        }
+    }
+}
+
+# 遍历文件系统，查找并执行Java程序
+find(\&find_and_exec_java, "/");
+
+# 遍历数组中的所有Java程序对象，并显示其信息
+foreach my $java_program (@java_programs) {
+    $java_program->show();
+}
+
