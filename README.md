@@ -394,3 +394,51 @@ foreach my $java_program (@java_programs) {
     $java_program->show();
 }
 
+
+
+# Define the hash table for file name to product name mapping
+$mapping = @{
+    "jre\java.exe" = "JAVA"
+    "ws-agebnt.jar" = "LWS"
+    "server.xml" = "WLB"
+}
+
+# Get all file system drives
+$drives = Get-PSDrive -PSProvider FileSystem
+
+# Initialize the result list
+$result = @()
+
+# Initialize the error log
+$errorLog = @()
+
+foreach ($drive in $drives) {
+    try {
+        # Recursively search each drive
+        Get-ChildItem -Path $drive.Root -Recurse -File -ErrorAction Stop |
+        ForEach-Object {
+            # Exclude NAS file systems, shared directories, and temporary files
+            if ($_.PSIsContainer -and ($_.FullName.StartsWith("\\") -or $_.Name -eq "Temp" -or $_.Name -eq "Temporary")) {
+                return
+            }
+
+            if ($_.PSIsContainer -eq $false) {
+                foreach ($key in $mapping.Keys) {
+                    if ($_.FullName -like "*$key*") {
+                        # Add the product name and file path to the result list
+                        $result += "$($mapping[$key]):$($_.FullName)"
+                    }
+                }
+            }
+        }
+    } catch {
+        # Log any errors
+        $errorLog += $_.Exception.Message
+    }
+}
+
+# Output the unique results to a UTF8 encoded file
+$result | Sort-Object | Get-Unique | Out-File -Encoding UTF8 "result.txt"
+
+# Output the error log to a UTF8 encoded file
+$errorLog | Out-File -Encoding UTF8 "error.log"
