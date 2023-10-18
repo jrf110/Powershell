@@ -1,0 +1,134 @@
+$software = "apache httpd"
+$executables = @("httpd", "httpd.worker", "httpd.event", "apachectl")
+$excludeDirs = @("temp", "nas", "share")
+$configFilePatterns = @("wserver.conf_*", "another_pattern")
+
+# 查找安装路径
+function Find-InstallationPaths {
+    param([string[]]$executables)
+    $found_paths = @()
+    $jobs = @()
+    foreach ($drive in Get-PSDrive -PSProvider FileSystem) {
+        foreach ($executable in $executables) {
+            $job = Start-Job -ScriptBlock {
+                param($drive, $executable, $excludeDirs)
+                try {
+                    Get-ChildItem -Path $drive.Root -Filter $executable -Recurse -ErrorAction Stop |
+                    Where-Object { $excludeDirs -notcontains (Split-Path $_.FullName -Parent | Split-Path -Leaf) } |
+                    ForEach-Object { Split-Path $_.FullName -Parent }
+                } catch {
+                    Write-Host "Error finding installation paths: $_"
+                }
+            } -ArgumentList $drive, $executable, $excludeDirs
+            $jobs += $job
+        }
+    }
+    # 等待所有任务完成
+    $jobs | Wait-Job | Out-Null
+    # 收集结果
+    foreach ($job in $jobs) {
+        $found_paths += Receive-Job -Job $job
+        Remove-Job -Job $job
+    }
+    return $found_paths | Sort-Object | Get-Unique
+}
+
+# 获取软件版本信息
+function Get-VersionInfo {
+    param([string[]]$version_commands)
+    $versions = @()
+    foreach ($version_command in $version_commands) {
+        try {
+            $version = & $version_command -V 2>$null
+            if ($?) {
+                $versions += ($version | Select-String -Pattern "Server version:.*Apache\/(\d+\.\d+\.\d+)").Matches.Groups[1].Value
+            } else {
+                $versions += "无法获取版本信息"
+            }
+        } catch {
+            Write-Host "Error getting version info: $_"
+        }
+    }
+    return $versions
+}
+
+# 获取补丁信息
+function Get-PatchInfo {
+    param([string[]]$patch_commands)
+    $patch_infos = @()
+    foreach ($patch_command in $patch_commands) {
+        try {
+            $patch_info = & $patch_command -t 2>&1 | Select-String -Pattern 'CVE-.\{4,20\}'
+            if ($null -eq $patch_info) {
+                $patch_infos += "未找到补丁信息"
+            } else {
+                $patch_infos += $patch_info
+            }
+        } catch {
+            Write-Host "Error getting patch info: $_"
+        }
+    }
+    return $patch_infos
+}
+
+# 检查实例是否在运行
+function Check-InstanceRunning {
+    param($instance)
+    try {
+        $pid = Get-Process | Where-Object { $_.Path -eq $instance }
+        if ($null -ne $pid) {
+            return "正在运行"
+        } else {
+            return "未运行"
+        }
+    } catch {
+        Write-Host "Error checking if instance is running: $_"
+    }
+}
+
+# 查找配置文件
+function Find-ConfigFiles {
+    param($dir, [string[]]$patterns)
+    $config_files = @()
+    foreach ($pattern in $patterns) {
+        try {
+            $regex = [regex]::Escape($pattern).Replace("\\*", ".*")
+            $files = Get-ChildItem -Path $dir -Recurse -File -ErrorAction Stop |
+                     Where-Object { $_.Name -match $regex } |
+                     ForEach-Object { $_.FullName }
+            $config_files += $files
+        } catch {
+            Write-Host "Error finding config files: $_"
+        }
+    }
+    return $config_files
+}
+
+# Main函数
+function Main {
+    Write-Host "正在查找 $software 的安装信息..."
+    $paths = Find-InstallationPaths $executables
+
+    foreach ($path in $paths) {
+        Write-Host "=== 安装路径：$path ==="
+        foreach ($executable in $executables) {
+            if (Test-Path "$path\$executable") {
+                $version = Get-VersionInfo @("$path\$executable")
+                $patch_info = Get-PatchInfo @("$path\$executable")
+                $config_files = Find-ConfigFiles $path $configFilePatterns
+                foreach ($config_file in $config_files) {
+                    $instance_name = Split-Path $config_file -Parent | Split-Path -Leaf
+                    $is_running = Check-InstanceRunning "$path\$executable"
+                    Write-Host "实例 - 名称：$instance_name"
+                    Write-Host "实例 - $executable 版本：$version"
+                    Write-Host "实例 - 补丁信息：$patch_info"
+                    Write-Host "实例 - 是否在运行：$is_running"
+                    Write-Host ""
+                }
+            }
+        }
+    }
+    Write-Host "完成 $software 的安装信息查找。"
+}
+
+Main

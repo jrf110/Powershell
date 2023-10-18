@@ -1,0 +1,94 @@
+$Global:softwareList = @()
+
+# 从注册表位置获取软件安装信息
+function Get-SoftwareInfoFromRegistry {
+    param([string]$registryPath)
+    $uninstallKeys = Get-ChildItem -Path $registryPath -ErrorAction SilentlyContinue
+    foreach ($key in $uninstallKeys) {
+        $displayName = $key.GetValue("DisplayName")
+        $installLocation = $key.GetValue("InstallLocation")
+        $version = $key.GetValue("DisplayVersion")
+        if ($displayName -and $installLocation) {
+            $software = @{
+                'Product' = $displayName
+                'Path'    = $installLocation
+                'Version' = $version
+            }
+            $Global:softwareList += $software
+        }
+    }
+}
+
+# 从 Windows 服务列表获取软件信息
+function Get-SoftwareInfoFromServices {
+    $services = Get-Service | Where-Object { $_.Status -eq 'Running' }
+    foreach ($service in $services) {
+        $displayName = $service.DisplayName
+        $executablePath = $service.PathName
+        $version = $null
+        if ($executablePath -match '^(.*\\)([^\\]+)$') {
+            $installLocation = $Matches[1]
+            $executable = $Matches[2]
+            $versionInfo = (Get-Command $executable).FileVersionInfo
+            $version = $versionInfo.ProductVersion
+        }
+        if ($displayName -and $installLocation) {
+            $software = @{
+                'Product' = $displayName
+                'Path'    = $installLocation
+                'Version' = $version
+            }
+            $Global:softwareList += $software
+        }
+    }
+}
+
+# 查找安装路径
+function Find-InstallationPaths {
+    param([string[]]$executables)
+    $found_paths = @()
+    foreach ($executable in $executables) {
+        Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+            $drive = $_
+            Start-Job -ScriptBlock {
+                param($drive, $executable, $excludeDirs)
+                try {
+                    Get-ChildItem -Path $drive.Root -Filter $executable -Recurse -ErrorAction SilentlyContinue |
+                    Where-Object { $excludeDirs -notcontains (Split-Path $_.FullName -Parent | Split-Path -Leaf) } |
+                    ForEach-Object {
+                        $path = Split-Path $_   
+
+						$path = Split-Path $_.FullName -Parent
+                        $software = @{
+                            'Product' = $executable
+                            'Path'    = $path
+                        }
+                        $Global:softwareList += $software
+                    }
+                } catch {
+                    Write-Host "Error finding installation paths: $_"
+                }
+            } -ArgumentList $drive, $executable, $excludeDirs
+        }
+    }
+    # 等待所有任务完成
+    Get-Job | Wait-Job | Out-Null
+    # 收集结果
+    Get-Job | Receive-Job
+    Get-Job | Remove-Job
+}
+
+# 从注册表位置获取软件安装信息
+Get-SoftwareInfoFromRegistry 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+Get-SoftwareInfoFromRegistry 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+Get-SoftwareInfoFromRegistry 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+
+# 从 Windows 服务列表获取软件信息
+Get-SoftwareInfoFromServices
+
+# 查找安装路径
+Find-InstallationPaths $executables
+
+# 比较结果
+$matchedSoftware = Compare-Object -ReferenceObject $Global:softwareList -DifferenceObject $Global:softwareListFromRegistry -Property 'Product', 'Path' -IncludeEqual -ExcludeDifferent
+$matchedSoftware | Where-Object { $_.SideIndicator -eq '==' } | Select-Object -ExpandProperty 'InputObject'

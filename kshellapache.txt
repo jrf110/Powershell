@@ -1,0 +1,119 @@
+#!/bin/ksh
+
+software="apache httpd"
+executables=("httpd" "httpd.worker" "httpd.event" "apachectl")
+excludeDirs=("temp" "nas" "share")
+configFilePatterns=("wserver.conf_*" "another_pattern")
+
+# 查找安装路径
+find_installation_paths() {
+    found_paths=()
+    for executable in "${executables[@]}"; do
+        while IFS= read -r -d '' file; do
+            found_paths+=("$(dirname "$file")")
+        done < <(find / -type f -name "$executable" -print0 2>/dev/null)
+    done
+    echo "${found_paths[@]}" | sort -u
+}
+find_installation_paths() {
+    found_paths=()
+    for executable in "${executables[@]}"; do
+        while IFS= read -r -d '' file; do
+            dir=$(dirname "$file")
+            # 过滤临时文件夹
+            if [[ $dir != *"/temp"* ]]; then
+                found_paths+=("$dir")
+            fi
+        done < <(find / -type f -name "$executable" -print0 2>/dev/null)
+    done
+    # 去除重复路径并确认实际存在可执行文件
+    unique_paths=($(printf "%s\n" "${found_paths[@]}" | sort -u))
+    actual_paths=()
+    for path in "${unique_paths[@]}"; do
+        for executable in "${executables[@]}"; do
+            if [ -f "$path/$executable" ]; then
+                actual_paths+=("$path")
+                break
+            fi
+        done
+    done
+    echo "${actual_paths[@]}"
+}
+
+
+
+
+# 获取软件版本信息
+get_version_info() {
+    version_command=$1
+    version=$($version_command -V 2>/dev/null | grep "Server version:" | awk -F'/' '{print $2}')
+    if [ -z "$version" ]; then
+        echo "无法获取版本信息"
+    else
+        echo "$version"
+    fi
+}
+
+# 获取补丁信息
+get_patch_info() {
+    patch_command=$1
+    patch_info=$($patch_command -t 2>&1 | grep 'CVE-.\{4,20\}')
+    if [ -z "$patch_info" ]; then
+        echo "未找到补丁信息"
+    else
+        echo "$patch_info"
+    fi
+}
+
+# 检查实例是否在运行
+check_instance_running() {
+    instance=$1
+    pid=$(pgrep -f "$instance")
+    if [ -z "$pid" ]; then
+        echo "未运行"
+    else
+        echo "正在运行"
+    fi
+}
+
+# 查找配置文件
+find_config_files() {
+    dir=$1
+    patterns=$2
+    config_files=()
+    for pattern in "${patterns[@]}"; do
+        while IFS= read -r -d '' file; do
+            config_files+=("$file")
+        done < <(find "$dir" -type f -name "$pattern" -print0 2>/dev/null)
+    done
+    echo "${config_files[@]}"
+}
+
+# Main函数
+main() {
+    echo "正在查找 $software 的安装信息..."
+    paths=$(find_installation_paths)
+
+    for path in $paths; do
+        echo "=== 安装路径：$path ==="
+        for executable in "${executables[@]}"; do
+            if [ -f "$path/$executable" ]; then
+                version=$(get_version_info "$path/$executable")
+                patch_info=$(get_patch_info "$path/$executable")
+                config_files=$(find_config_files "$path" "${configFilePatterns[@]}")
+                for config_file in $config_files; do
+                    instance_name=$(basename "$(dirname "$config_file")")
+                    is_running=$(check_instance_running "$path/$executable")
+                    echo "实例 - 名称：$instance_name"
+                    echo "实例 - $executable 版本：$version"
+                    echo "实例 - 补丁信息：$patch_info"
+                    echo "实例 - 是否在运行：$is_running"
+                    echo ""
+                done
+            fi
+        done
+    done
+    echo "完成 $software 的安装信息查找。"
+}
+
+main
