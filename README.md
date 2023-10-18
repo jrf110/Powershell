@@ -442,3 +442,120 @@ $result | Sort-Object | Get-Unique | Out-File -Encoding UTF8 "result.txt"
 
 # Output the error log to a UTF8 encoded file
 $errorLog | Out-File -Encoding UTF8 "error.log"
+
+
+
+
+   #!/bin/ksh
+
+software="apache httpd"
+software_dirs=(
+    "/opt/IBM/IBMIHS90"
+    "/usr/local/apache"
+    # 添加其他可能的安装路径
+)
+
+# 查找安装路径
+find_installation_paths() {
+    found_paths=()
+    for dir in "${software_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            found_paths+=("$dir")
+        fi
+    done
+
+    echo "${found_paths[@]}"
+}
+
+# 获取软件版本信息
+get_version_info() {
+    version_cmd=$1
+    version=$($version_cmd 2>/dev/null)
+
+    if [[ $? -eq 0 ]]; then
+        echo "$version" | awk '/version/{print $3}' | head -n 1
+    else
+        echo "无法获取版本信息"
+    fi
+}
+
+# 获取补丁信息
+get_patch_info() {
+    patch_info=$($1 -t 2>&1 | grep -o 'CVE-.\{4,20\}')
+    if [[ -z $patch_info ]]; then
+        echo "未找到补丁信息"
+    else
+        echo "$patch_info"
+    fi
+}
+
+# 检查实例是否在运行
+check_instance_running() {
+    instance=$1
+    pid=$(ps -ef | grep "httpd -k start -f $instance" | grep -v grep | awk '{print $2}')
+
+    if [[ -n $pid ]]; then
+        echo "正在运行"
+    else
+        echo "未运行"
+    fi
+}
+
+# 查找配置文件
+find_config_files() {
+    config_files=()
+    for dir in "${software_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            config_files+=($(find $dir -name "wserver.conf_*" -type f -exec basename {} \;))
+        fi
+    done
+
+    echo "${config_files[@]}"
+}
+
+# Main函数
+main() {
+    echo "正在查找 $software 的安装信息..."
+    paths=$(find_installation_paths)
+
+    for path in ${paths[@]}; do
+        echo "=== 安装路径：$path ==="
+        httpd_version=$(get_version_info "$path/bin/httpd -V")
+        apachectl_version=$(get_version_info "$path/bin/apachectl -V")
+        patch_info=$(get_patch_info "$path/bin/httpd")
+        instance_names=$(find_config_files)
+
+        if [[ -n $instance_names ]]; then
+            echo "实例信息："
+            for index in "${!instance_names[@]}"; do
+                instance=${instance_names[$index]}
+                name=${instance%/*}
+                if [[ -z $name ]]; then
+                    name="binariesOnly"
+                fi
+                is_running=$(check_instance_running "$path/conf/$instance")
+                echo "实例 $((index+1)) - 名称：$name"
+                echo "实例 $((index+1)) - httpd 版本：$httpd_version"
+                echo "实例 $((index+1)) - apachectl 版本：$apachectl_version"
+                echo "实例 $((index+1)) - 补丁信息：$patch_info"
+                echo "实例 $((index+1)) - 是否在运行：$is_running"
+                echo ""
+            done
+        else
+            echo "未找到实例"
+            name="binariesOnly"
+            is_running=$(check_instance_running "$path/conf/httpd.conf")
+            echo "默认实例 - 名称：$name"
+            echo "默认实例 - httpd 版本：$httpd_version"
+            echo "默认实例 - apachectl 版本：$apachectl_version"
+            echo "默认实例 - 补丁信息：$patch_info"
+            echo "默认实例 - 是否在运行：$is_running"
+            echo ""
+        fi
+    done
+
+    echo "完成 $software 的安装信息查找。"
+}
+
+main
+
