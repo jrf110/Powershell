@@ -116,4 +116,27 @@ main() {
     echo "完成 $software 的安装信息查找。"
 }
 
+
+
 main
+
+
+
+
+Self-Assessment - 2023
+
+Over the course of 2023, as a software engineer, I actively contributed to the success of our middleware engineer team. Our team's focus was on handling daily Business as Usual (BAU) tasks, and we made significant progress in various areas. Here is an overview of our achievements:
+
+1. Jira Items:
+Throughout the year, our team took on a substantial number of Jira items and successfully resolved them within the specified timeframes. We prioritized tasks efficiently and ensured effective collaboration, resulting in the timely completion of a considerable number of Jira items.
+
+2. User Requirements:
+As a team, we prioritized understanding and fulfilling user requirements. We closely worked with stakeholders to determine their needs, analyze feasibility, and implement robust solutions. By proactively collaborating with project managers and product owners, we accomplished a significant number of user requirements, meeting or exceeding client expectations.
+
+3. Bug Fixes:
+In 2023, we dedicated ourselves to resolving bugs and improving the overall quality of our middleware systems. We adopted a diligent approach to bug identification, investigation, and resolution. Through rigorous testing and debugging, we successfully addressed a notable number of bugs, contributing to a more stable and reliable software environment.
+
+4. Continuous Improvement:
+Apart from handling BAU tasks, our team was committed to continuously improving our skills and processes. We actively participated in training sessions, workshops, and knowledge-sharing initiatives to enhance our technical expertise. By embracing new technologies, adopting best practices, and optimizing our workflows, we ensured that our team remained at the cutting edge of middleware engineering.
+
+Overall, the past year was marked by significant achievements for our middleware engineer team. We consistently met deadlines, delivered high-quality solutions, and actively contributed to the success of the projects we undertook. I am proud of the team's accomplishments and look forward to building upon this success in the upcoming year.
