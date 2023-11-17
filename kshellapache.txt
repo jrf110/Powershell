@@ -179,3 +179,31 @@ foreach ($item in $software) {
 
 # Output the software details in desired format (e.g., CSV)
 $softwareDetails | Export-Csv -Path "InstalledSoftwareInfo.csv" -NoTypeInformation
+
+
+
+
+# 查找所有磁盘上的 weblogic.jar 文件并获取详细信息
+$drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Name
+
+foreach ($drive in $drives) {
+    $searchPath = "${drive}:\"
+    $weblogicJars = Get-ChildItem -Path $searchPath -Recurse -Include "weblogic.jar" -ErrorAction SilentlyContinue
+
+    foreach ($jarFile in $weblogicJars) {
+        $installLocation = $jarFile.DirectoryName
+        $javaCmdOutput = ""
+
+        # 读取版本信息和详细的 patch 信息
+        if (Test-Path (Join-Path -Path $installLocation -ChildPath "weblogic.jar")) {
+            $javaCmdOutput = Invoke-Expression "java -cp '$($installLocation)\weblogic.jar' weblogic.version verbose 2>&1"
+        }
+
+        # 构建输出字符串
+        $output = "OWS0: Binary,product_alias,OWS
+OWS0: Binary,product_home,$installLocation
+$javaCmdOutput"
+
+        Write-Output $output
+    }
+}
