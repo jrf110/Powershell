@@ -140,3 +140,42 @@ In 2023, we dedicated ourselves to resolving bugs and improving the overall qual
 Apart from handling BAU tasks, our team was committed to continuously improving our skills and processes. We actively participated in training sessions, workshops, and knowledge-sharing initiatives to enhance our technical expertise. By embracing new technologies, adopting best practices, and optimizing our workflows, we ensured that our team remained at the cutting edge of middleware engineering.
 
 Overall, the past year was marked by significant achievements for our middleware engineer team. We consistently met deadlines, delivered high-quality solutions, and actively contributed to the success of the projects we undertook. I am proud of the team's accomplishments and look forward to building upon this success in the upcoming year.
+
+
+
+# Fetch installed software information
+$software = Get-WmiObject -Class Win32_Product | Select-Object Name, Vendor, Version, InstallLocation
+
+# Initialize an array to hold software details
+$softwareDetails = @()
+
+# Loop through each installed software
+foreach ($item in $software) {
+    $softwareName = $item.Name
+    $softwareVersion = $item.Version
+    $installLocation = $item.InstallLocation
+    
+    # Get additional details using registry or other methods if needed
+    # For instance, using registry to find patch information:
+    $registryPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$softwareName"
+    $patchDetails = (Get-ItemProperty -Path $registryPath).DisplayVersion
+
+    # Check if software is running (by searching for a process)
+    $isRunning = Get-Process | Where-Object {$_.Name -eq $softwareName}
+
+    # Construct an object with software details
+    $softwareInfo = [PSCustomObject]@{
+        Name = $softwareName
+        Version = $softwareVersion
+        InstallLocation = $installLocation
+        PatchDetails = $patchDetails
+        IsRunning = if ($isRunning) { "Running" } else { "Not Running" }
+        # Add more properties as needed
+    }
+
+    # Add the software details to the array
+    $softwareDetails += $softwareInfo
+}
+
+# Output the software details in desired format (e.g., CSV)
+$softwareDetails | Export-Csv -Path "InstalledSoftwareInfo.csv" -NoTypeInformation
