@@ -207,3 +207,55 @@ $javaCmdOutput"
         Write-Output $output
     }
 }
+
+
+
+
+
+
+# 获取可用磁盘列表
+$drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Name
+
+# 初始化一个数组以保存后台任务
+$jobs = @()
+
+# 遍历每个磁盘并创建后台任务来搜索 weblogic.jar 文件
+foreach ($drive in $drives) {
+    $searchPath = "${drive}:\"
+
+    $job = Start-Job -ScriptBlock {
+        param($path)
+        
+        # 搜索 weblogic.jar 文件
+        Get-ChildItem -Path $path -Recurse -Include "weblogic.jar" -ErrorAction SilentlyContinue
+    } -ArgumentList $searchPath
+
+    # 将任务添加到任务列表
+    $jobs += $job
+}
+
+# 等待所有后台任务完成
+$null = $jobs | Wait-Job
+
+# 获取所有任务的结果
+$results = $jobs | Receive-Job
+
+# 处理每个任务的结果
+foreach ($result in $results) {
+    foreach ($jarFile in $result) {
+        $installLocation = $jarFile.DirectoryName
+        $javaCmdOutput = ""
+
+        # 读取版本信息和详细的 patch 信息
+        if (Test-Path (Join-Path -Path $installLocation -ChildPath "weblogic.jar")) {
+            $javaCmdOutput = Invoke-Expression "java -cp '$($installLocation)\weblogic.jar' weblogic.version verbose 2>&1"
+        }
+
+        # 构建输出字符串
+        $output = "OWS0: Binary,product_alias,OWS
+OWS0: Binary,product_home,$installLocation
+$javaCmdOutput"
+
+        Write-Output $output
+    }
+}
