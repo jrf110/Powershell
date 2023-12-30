@@ -259,3 +259,216 @@ if (-d $servers_home) {
     }
 }
 这段 Perl 代码首先检查 SERVERS_HOME 是否为一个目录。然后遍历 serverarr 数组中的每一项，并对每个项目执行类似的操作：提取包含 <include> 标签的行，解析 XML 文件路径，替换路径变量并检查文件是否存在，存在则将文件路径添加到数组 patharr 中。
+
+
+
+
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+sub process_server_xml {
+    my ($file_path) = @_;
+
+    # 打开文件并读取所有行
+    open(my $fh, '<', $file_path) or die "Could not open file '$file_path' $!";
+    my @lines = <$fh>;
+    close($fh);
+
+    # 清理数据：去除不可见字符、空行和注释
+    my @clean_lines = grep { 
+        $_ =~ /\S/ &&          # 不包含空行
+        !(/^\s*<!--/) &&       # 不是多行注释开始
+        !(/-->\s*$/) &&        # 不是多行注释结束
+        !(/^\s*<!\[CDATA\[/) && # 不是CDATA区段开始
+        !(/\]\]>\s*$/) &&      # 不是CDATA区段结束
+        !(/^\s*<\?/) &&        # 不是XML指令开始
+        !(/\?>\s*$/)           # 不是XML指令结束
+    } map { 
+        s/\p{C}//g;            # 去除不可见字符
+        $_;
+    } @lines;
+
+    # 在这里可以进一步处理清理后的配置项
+    # 例如检查HTTPS端点配置等
+    check_https_endpoint_config(\@clean_lines);
+
+    return \@clean_lines;
+}
+
+sub check_https_endpoint_config {
+    my ($lines_ref) = @_;
+
+    my $in_http_endpoint = 0;
+    my ($https_port, $ssl_protocol, $ciphers);
+
+    foreach my $line (@$lines_ref) {
+        if ($line =~ m{^<httpEndpoint .*?httpsPort="(\d+)"}) {
+            $https_port = $1;
+            $in_http_endpoint = 1;
+        }
+        elsif ($in_http_endpoint && $line =~ m{sslProtocol="([^"]+)"/}) {
+            $ssl_protocol = $1;
+        }
+        elsif ($in_http_endpoint && $line =~ m{ciphers="([^"]+)"/}) {
+            $ciphers = $1;
+        }
+        elsif ($line =~ m{</httpEndpoint>}) {
+            $in_http_endpoint = 0;
+            # 检查SSL/TLS配置是否符合要求
+            check_ssl_config($https_port, $ssl_protocol, $ciphers);
+        }
+    }
+}
+
+sub check_ssl_config {
+    my ($https_port, $ssl_protocol, $ciphers) = @_;
+
+    # 这里根据需要检查具体的SSL/TLS配置，如TLSv1.2和指定密码套件
+    # 示例代码仅打印配置信息
+    print "HTTPS Port: $https_port\n";
+    print "SSL Protocol: $ssl_protocol\n";
+    print "Ciphers: $ciphers\n";
+
+    # 根据实际情况添加检查逻辑
+}
+
+# 调用公共方法处理server.xml
+my $config = process_server_xml('/path/to/server.xml');
+
+
+
+
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename;
+
+sub process_server_xml {
+    my ($file_path) = @_;
+
+    # 打开文件并读取所有行
+    open(my $fh, '<', $file_path) or die "Could not open file '$file_path' $!";
+    my @lines = <$fh>;
+    close($fh);
+
+    # 清理数据：去除不可见字符、空行和注释
+    my @clean_lines = grep { 
+        $_ =~ /\S/ &&          # 不包含空行
+        !(/^\s*<!--/) &&       # 不是多行注释开始
+        !(/-->\s*$/) &&        # 不是多行注释结束
+        !(/^\s*<!\[CDATA\[/) && # 不是CDATA区段开始
+        !(/\]\]>\s*$/) &&      # 不是CDATA区段结束
+        !(/^\s*<\?/) &&        # 不是XML指令开始
+        !(/\?>\s*$/)           # 不是XML指令结束
+    } map { 
+        s/\p{C}//g;            # 去除不可见字符
+        $_;
+    } @lines;
+
+    # 处理include标签，并递归检查包含的XML文件
+    foreach my $line (@clean_lines) {
+        if ($line =~ m{^<include location="(.+?)"/}) {
+            my $include_file = $1;
+            $include_file =~ s/\$\{[^}]+\}/$ENV{$&}/g;  # 替换环境变量
+            process_server_xml(basename($file_path, ".xml") . '/' . $include_file);
+        }
+    }
+
+    # 在这里可以进一步处理清理后的配置项
+    # 例如检查HTTPS端点配置等
+    check_https_endpoint_config(\@clean_lines);
+    check_blog_ds_config(\@clean_lines);  # 新增检查BlogDS.xml的方法
+
+    return \@clean_lines;
+}
+
+# ... 其他子程序定义（如check_https_endpoint_config）...
+
+# 新增用于检查BlogDS.xml配置的方法
+sub check_blog_ds_config {
+    my ($lines_ref) = @_;
+
+    # 使用类似的逻辑解析BlogDS.xml的内容
+    # 注意这里的逻辑应该根据BlogDS.xml的实际结构进行调整
+    # 这里仅作为示例
+    ...
+}
+
+# 调用公共方法处理server.xml
+my $config = process_server_xml('/path/to/server.xml');
+这个改进版的process_server_xml方法首先遍历清理后的每一行，当遇到<include>标签时，提取出包含的文件路径，并使用basename函数处理相对路径，然后递归调用自身处理该包含的XML文件。
+
+新增了check_blog_ds_config方法用于处理BlogDS.xml中的内容。不过，由于BlogDS.xml遵循Spring XML配置格式，而非IBM WAS Liberty的配置格式，因此需要根据实际的BlogDS.xml内容编写相应的解析和检查逻辑。在上面的示例中，我们仅提供了方法声明，具体的实现细节请按照BlogDS.xml的实际内容进行填充。
+
+
+
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename;
+
+sub process_server_xml {
+    my ($file_path) = @_;
+
+    # 打开文件并读取所有行
+    open(my $fh, '<', $file_path) or die "Could not open file '$file_path' $!";
+    my @lines = <$fh>;
+    close($fh);
+
+    # 清理数据：去除不可见字符、空行和注释
+    my @clean_lines = grep { 
+        $_ =~ /\S/ &&          # 不包含空行
+        !(/^\s*<!--/) &&       # 不是多行注释开始
+        !(/-->\s*$/) &&        # 不是多行注释结束
+        !(/^\s*<!\[CDATA\[/) && # 不是CDATA区段开始
+        !(/\]\]>\s*$/) &&      # 不是CDATA区段结束
+        !(/^\s*<\?/) &&        # 不是XML指令开始
+        !(/\?>\s*$/)           # 不是XML指令结束
+    } map { 
+        s/\p{C}//g;            # 去除不可见字符
+        $_;
+    } @lines;
+
+    # 合并包含的XML文件内容
+    while (my ($idx, $line) = each @clean_lines) {
+        if ($line =~ m{^<include location="(.+?)"/}) {
+            my $include_file = $1;
+            $include_file =~ s/\$\{[^}]+\}/$ENV{$&}/g;  # 替换环境变量
+            push @clean_lines, process_included_xml(basename($file_path, ".xml") . '/' . $include_file);
+            splice(@clean_lines, $idx, 1);  # 删除原include标签行
+        }
+    }
+
+    # 在这里可以进一步处理清理并合并后的配置项
+    # 例如检查HTTPS端点配置等
+    check_https_endpoint_config(\@clean_lines);
+    check_blog_ds_config(\@clean_lines);  # 新增检查BlogDS.xml的方法
+
+    return \@clean_lines;
+}
+
+# 加载并返回包含的XML文件内容
+sub process_included_xml {
+    my ($include_file) = @_;
+    open(my $fh, '<', $include_file) or die "Could not open include file '$include_file' $!";
+    my @included_lines = <$fh>;
+    close($fh);
+    
+    return process_server_xml($include_file);  # 使用递归调用清理并返回包含的XML文件内容
+}
+
+# ... 其他子程序定义（如check_https_endpoint_config）...
+
+# 新增用于检查BlogDS.xml配置的方法
+sub check_blog_ds_config {
+    my ($lines_ref) = @_;
+
+    # 使用类似的逻辑解析BlogDS.xml的内容
+    # 注意这里的逻辑应该根据BlogDS.xml的实际结构进行调整
+    # 这里仅作为示例
+    ...
+}
+
+# 调用公共方法处理server.xml
+my $config = process_server_xml('/path/to/server.xml');
