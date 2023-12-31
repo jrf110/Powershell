@@ -18,108 +18,7 @@ substr(o,ret+9))"
 #blogfile=-"s(echo"s(tmpyaluej"
 iseds/<//lsed's//>//Isedis/"//glav
 blogfile=
-(
-�
-�
-ℎ
-�
-"
-�
-�
-�
-�
-�
-�
-�
-�
-�
-"
-∣
-�
-�
-�
-�
-"
-�
-/
-\s
-(
-�
-ℎ
-�
-�
-�
-�
-.
-�
-�
-�
-�
-�
-�
-.
-�
-�
-�
-)
-/
-/
-�
-�
-�
-\/
-�
-�
-�
-\/
-�
-�
-�
-�
-/
-�
-2
->
-/
-�
-�
-�
-/
-�
-�
-�
-1
-)
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-ℎ
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
-�
+
 (echo"sblogfile"∣lsed"s/\s(shared.config.dir)//opt\/IBM\/wlpV/u2>/dev/nul1)sblogfilestillwithvariablelike(aslco
 #：after replacer
 bypass
@@ -131,48 +30,7 @@ if[[-f "s(blogfilellj];then
 patharr[(#patharr @jj-sbiogfiie
 elif[［-f "sinstancepath/s(blogfile]" l;then
 patharr[(#patharr[@i]="s(instancePath)/
-(
-�
-�
-�
-�
-�
-�
-�
-�
-)
-"
-�
-�
-�
-�
-�
-�
-�
-�
-<
-<
-(
-�
-�
-�
-�
-−
-�
-"
-<
-�
-�
-�
-�
-�
-�
-�
-�
-∗
- 
-"
-"
+
 (blogfile)"fifidone<<(grep−E"<includel∗""item")
 #merged all xmlfiles and output format removed the comments
 请解释以上代码并将代码转为
@@ -472,3 +330,43 @@ sub check_blog_ds_config {
 
 # 调用公共方法处理server.xml
 my $config = process_server_xml('/path/to/server.xml');
+
+
+
+
+
+use strict;
+use warnings;
+
+sub read_and_preprocess_xml {
+    my ($file_path) = @_;
+
+    open my $fh, '<', $file_path or die "Could not open '$file_path' $!\n";
+
+    my $content = do { local $/; <$fh> };  # Read the whole file into a string
+
+    # Remove comments
+    $content =~ s/<!--.*?-->//gs;  # XML comments
+    $content =~ s/#.*$//gm;        # Bash-style comments
+
+    # Replace ${shared.config.dir} with its value from the environment and include the content of the included file
+    $content =~ s/<include.*?location="\$\{shared.config.dir\}\/(.*\.xml)"\/>/
+        defined $ENV{'shared.config.dir'} ? do {
+            my $included_file = "$ENV{'shared.config.dir'}/$1";
+            my @included_lines = read_and_preprocess_xml($included_file);
+            join("\n", @included_lines);
+        } : "<include optional=\"true\" location=\"${shared.config.dir}/$1\"\/>"/ge;
+
+    # Remove invisible characters except newline
+    $content =~ s/[[:cntrl:]](?!\n)//g;
+
+    # Split the content back into lines
+    my @processed_lines = split /\n/, $content;
+
+    close $fh;
+
+    return @processed_lines;
+}
+
+my @server_xml_lines = read_and_preprocess_xml('server.xml');
+
