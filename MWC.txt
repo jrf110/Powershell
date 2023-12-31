@@ -416,3 +416,67 @@ sub read_and_preprocess_xml {
 # 示例调用
 my @server_config = read_and_preprocess_xml('/path/to/server.xml');
 这个版本首先尝试使用环境变量值来确定包含文件的实际路径，如果没有定义该环境变量，则默认替换为指定的固定路径 /opt/IBM/wlp/server/shared/blogDS.xml。其他部分与之前的实现保持一致。
+
+
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename;
+
+sub remove_xml_comments {
+    my ($content) = @_;
+    $content =~ s{<!--(.*?)-->}{}sgsx;  # 更严谨的匹配XML注释段
+    return $content;
+}
+
+sub read_and_preprocess_xml {
+    my ($file_path) = @_;
+
+    open my $fh, '<', $file_path or die "Could not open '$file_path' $!\n";
+
+    # 读取整个文件内容到字符串变量
+    local $/;
+    my $content = <$fh>;
+
+    # 去除XML注释
+    $content = remove_xml_comments($content);
+
+    # 替换${shared.config.dir}并处理include标签
+    while ($content =~ m{<include\s+location="(\$\{[^}]+\}\/.*?)"/}) {
+        my $included_file_env = $1;
+        my $included_file = defined($ENV{$included_file_env}) ? $ENV{$included_file_env} : '/opt/IBM/wlp/server/shared/blogDS.xml';
+        
+        if (-f $included_file && -r _) {
+            my @included_content = read_and_preprocess_xml($included_file);
+            
+            # 预处理包含文件的内容
+            foreach my $included_line (@included_content) {
+                $included_line = remove_xml_comments($included_line);  # 先移除包含文件中的XML注释
+                $included_line =~ s/#.*$//;       # 去除Bash风格注释
+                $included_line =~ s/[[:cntrl:]](?!\n)//g;  # 去除非换行符的不可见字符
+            }
+
+            # 将预处理过的包含文件内容替换回原始位置
+            $content =~ s/(<include.*?location="$included_file_env".*?>)/join("\n", @included_content)/es;
+        } else {
+            warn "Warning: Cannot include file '$included_file' due to missing or unreadable.\n";
+        }
+    }
+
+    # 将内容分割成行，并进一步清理每一行（对于非包含文件的部分）
+    my @processed_lines = split /\n/, $content;
+    foreach my $line (@processed_lines) {
+        next if $line =~ m{<include.*?location=};  # 跳过已处理过的包含文件部分
+
+        # 对于剩余未处理的行执行清理操作
+        $line =~ s/#.*$//;                         # 去除Bash风格注释
+        $line =~ s/[[:cntrl:]](?!\n)//g;          # 去除非换行符的不可见字符
+    }
+
+    close $fh;
+
+    return @processed_lines;
+}
+
+# 示例调用
+my @server_config = read_and_preprocess_xml('/path/to/server.xml');
