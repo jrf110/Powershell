@@ -1,0 +1,163 @@
+<server description="new server">
+
+  <!-- Features -->
+  <featureManager>
+    <feature>jsp-2.3</feature>
+    <feature>servlet-4.0</feature>
+    <feature>jaxrs-2.1</feature>
+    <feature>cdi-2.0</feature>
+    <feature>ejbLite-3.2</feature>
+    <feature>jpa-2.2</feature>
+    <feature>jdbc-4.2</feature>
+    <feature>websocket-1.1</feature>
+    <feature>mpJwt-1.1</feature>
+    <feature>microProfile-4.0</feature>
+    <feature>appSecurity-3.0</feature>
+    <feature>monitor-1.0</feature>
+    <feature>logging-1.0</feature>
+    <feature>audit-1.0</feature>
+  </featureManager>
+
+  <!-- Global Security -->
+  <basicRegistry id="defaultRegistry">
+    <user name="admin" password="{xor}rO7fz9qUaRk=" />
+    <user name="appUser1" password="{xor}bXVzc2FnZQ==" />
+  </basicRegistry>
+
+	<!-- Key store configuration -->
+	<keyStore id="defaultKeyStore" location="/opt/IBM/WLP-keystore/keystore.jks" password="your_keystore_password" type="JKS"/>
+
+	<!-- HTTP and HTTPS Endpoints with SSL configuration -->
+	<httpEndpoint host="*" httpPort="9080" httpsPort="9443" id="defaultHttpEndpoint">
+		<tcpOptions soReuseAddr="true"/>
+		<sslOptions keyStoreRef="defaultKeyStore" trustStoreRef="defaultKeyStore" 
+					sslProtocol="TLSv1.2"
+					ciphers="TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_DHE_RSA_WITH_AES_128_GCM_SHA256, TLS_AES_128_GCM_SHA256"
+					clientAuthentication="true" />
+	</httpEndpoint>
+
+  <!-- LDAP Configuration -->
+  <ldapRegistry id="MyLdapRegistry" realm="SampleRealm" serverPort="389"
+                 ignoreCase="true" host="ldap.example.com" ldapType="IBM Tivoli Directory Server">
+    <baseDN>ou=people,dc=example,dc=com</baseDN>
+    <bindDN>cn=admin,dc=example,dc=com</bindDN>
+    <bindPassword>{xor}encryptedAdminPwd=</bindPassword>
+  </ldapRegistry>
+
+  <!-- JDBC Connection Pools and Data Sources -->
+  <library id="DB2Lib">
+    <fileset dir="${shared.config.dir}/db2driver" includes="*.jar"/>
+  </library>
+
+  <jdbcDriver id="db2Driver" libraryRef="DB2Lib"/>
+
+  <jdbcConnectionPool id="myDataSource" jdbcDriverRef="db2Driver" jndiName="jdbc/myDS" minPoolSize="5" maxPoolSize="50">
+    <properties.db2.jcc databaseName="SAMPLE" user="db2user" password="{xor}encryptedPassword=" serverName="localhost" portNumber="50000"/>
+  </jdbcConnectionPool>
+
+  <!-- JNDI bindings -->
+  <jndiEntry jndiName="eMail/host" value="smtp.example.com"/>
+  <jndiEntry jndiName="eMail/port" value="587"/>
+
+  <!-- Application Deployment -->
+  <application location="myApp.war" contextRoot="/myApp" name="myApp">
+    <classloader commonLibraryRef="DB2Lib"/>
+    <application-bnd>
+      <security-role name="admin">
+        <user name="admin"/>
+      </security-role>
+    </application-bnd>
+  </application>
+
+  <!-- Blog Application Configuration -->
+  <include location="BlogDS.xml"/>
+
+  <!-- Audit Log Configuration -->
+  <auditlog logFormat="BASIC" maxFiles="5" rotationTime="1d">
+    <customHandler class="com.ibm.websphere.security.AuditLogHandler">
+      <property name="logDirectory" value="${server.output.dir}/logs/audit"/>
+      <property name="maxFileSize" value="10MB"/>
+    </customHandler>
+  </auditlog>
+
+  <!-- Monitoring using JMX -->
+  <monitoring serviceRef="MonitoringService"/>
+
+  <!-- JMS Resource Adapter and Queue Configuration -->
+  <library id="wmqJmsLib">
+    <fileset dir="${shared.config.dir}/wmqJars" includes="*.jar"/>
+  </library>
+
+  <resourceAdapter id="wmqJmsResourceAdapter">
+    <archive>mq-jms.rar</archive>
+    <classloader apiTypeVisibility="spec, ibm-api, third-party" commonLibraryRef="wmqJmsLib"/>
+  </resourceAdapter>
+
+  <jmsQueueConnectionFactory jndiName="jms/queueCF" connectionManagerRef="ConMgr1">
+    <properties.wmqJms providerVersion="8.0" transportType="CLIENT"
+                      hostName="localhost" port="1414" channel="SYSTEM.DEF.SVRCONN"
+                      queueManager="QM1"/>
+  </jmsQueueConnectionFactory>
+
+  <administeredObject factoryClass="com.ibm.mq.jms.MQQueue" jndiName="jms/queue">
+    <property name="baseQueueName" value="MYAPP.QUEUE1"/>
+  </administeredObject>
+
+  <!-- IBM HTTP Server Plugin Configuration -->
+  <webContainer trustHostHeaderPort="true">
+    <plugInConfig id="defaultAppSecurityPlugInConfig">
+      <configLocation>/etc/httpd/conf.d/plugin-cfg.xml</configLocation>
+      <reloadOnChange>true</reloadOnChange>
+    </plugInConfig>
+  </webContainer>
+
+</server>
+
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- Configure a data source for the blog application -->
+    <bean id="blogDataSource" class="com.zaxxer.hikari.HikariDataSource">
+        <property name="jdbcUrl" value="jdbc:postgresql://localhost:5432/blog" />
+        <property name="username" value="postgres" />
+        <property name="password" value="mysecretpassword" />
+    </bean>
+
+    <!-- Configure a JPA entity manager factory for the blog application -->
+    <bean id="entityManagerFactory" class="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean">
+        <property name="dataSource" ref="blogDataSource" />
+        <property name="packagesToScan" value="com.example.blog.model" />
+        <property name="jpaVendorAdapter">
+            <bean class="org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter" />
+        </property>
+        <property name="jpaProperties">
+            <props>
+                <prop key="hibernate.hbm2ddl.auto">update</prop>
+                <prop key="hibernate.show_sql">true</prop>
+            </props>
+        </property>
+    </bean>
+
+    <!-- Configure a Spring Data JPA repository for the blog application -->
+    <bean id="blogRepository" class="org.springframework.data.jpa.repository.support.JpaRepositoryFactoryBean">
+        <property name="entityManagerFactory" ref="entityManagerFactory" />
+        <property name="repositoryInterface" value="com.example.blog.repository.BlogRepository" />
+    </bean>
+
+    <!-- Configure a Spring MVC controller for the blog application -->
+    <bean id="blogController" class="com.example.blog.controller.BlogController">
+        <property name="blogRepository" ref="blogRepository" />
+    </bean>
+
+    <!-- Configure a Spring MVC view resolver for the blog application -->
+    <bean id="viewResolver" class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <property name="prefix" value="/WEB-INF/jsp/" />
+        <property name="suffix" value=".jsp" />
+    </bean>
+
+</beans>
